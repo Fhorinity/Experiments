@@ -22,25 +22,14 @@ public class FiringGun : MonoBehaviour
 	void Start ()
     {
         trackedObj = GetComponent<SteamVR_TrackedObject>();
-	}	
-	// Update is called once per frame
-	void Update ()
+	}
+    // Update is called once per frame
+    void Update()
     {
-        if (!ve)
+        if (Input.GetButtonDown("Fire1") || controller.GetPressDown(triggerButton)) // && Time.time >= nextTimeToFire)
         {
-            if (Input.GetButtonDown("Fire1")) // && Time.time >= nextTimeToFire)
-            {
-             //   nextTimeToFire = Time.time + 1f / fireRate;
-                Shoot();
-            }
-        }
-        if (ve)
-        {
-            if (controller.GetPressDown(triggerButton))
-            {
-                //nextTimeToFire = Time.time + 1f / fireRate;
-                Shoot();
-            }
+            //   nextTimeToFire = Time.time + 1f / fireRate;
+            Shoot();
         }
     }
     void Shoot()
