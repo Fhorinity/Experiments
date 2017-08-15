@@ -4,10 +4,16 @@ using UnityEngine;
 
 public class SensorSweep : MonoBehaviour
 {
-    public float sonarRange = 5f;
+    private float sonarRange;
+    public GameObject greenLight;
+    public GameObject redLight;
     private float fov = 15;
-    public Camera cam;
+    public Camera upwardsCamera;
+    public Camera downwardsCamera;
+    public Camera frontalCamera;
+    public Camera crossingCamera;
     public float angle;
+    private float rumbleforce;
     //Changes the spread of raycasts
     private int segments = 30;
     //Segments equals number of lines however incorrect number of segments showing for lines
@@ -18,14 +24,21 @@ public class SensorSweep : MonoBehaviour
     private bool hapticOutput;
     private bool dualOutput;
     private int modeCounter;
+    public AudioClip hapticPulse1;
+    public AudioClip hapticPulse2;
+    public AudioClip hapticPulse3;
+    public AudioClip hapticPulse4;
+
+    public AudioClip audioPulse1;
+    public AudioClip audioPulse2;
+    public AudioClip audioPulse3;
+    public AudioClip audioPulse4;
+
     public Transform rig;
     public Transform headset;
     private Vector2 axis = Vector2.zero;
     public AudioSource hapticPulse;
     public AudioSource audioPulse;
-    public GameObject[] objects;
-    public GameObject closest = null;
-    private string[] tagsToCheck = { "Frontal_Obstruction", "Overhanging Obstruction" };
     
     private Valve.VR.EVRButtonId gripButton = Valve.VR.EVRButtonId.k_EButton_Grip;
     private Valve.VR.EVRButtonId applicationMenu = Valve.VR.EVRButtonId.k_EButton_ApplicationMenu;
@@ -36,15 +49,12 @@ public class SensorSweep : MonoBehaviour
 
     void Start()
     {
-        foreach (string tag in tagsToCheck)
-        {
-            objects = GameObject.FindGameObjectsWithTag(tag);
-        }
-        audioPulse = GetComponent<AudioSource>();
-        hapticPulse = GetComponent<AudioSource>();
+        audioPulse = GameObject.FindGameObjectWithTag("Audio").GetComponent<AudioSource>();
+        hapticPulse = GameObject.FindGameObjectWithTag("Haptic").GetComponent<AudioSource>();
         targetPos = Vector3.zero;
         StartCoroutine("RaySonar");
         trackedObj = GetComponent<SteamVR_TrackedObject>();
+
     }
     void Update()
     {
@@ -57,34 +67,41 @@ public class SensorSweep : MonoBehaviour
 
         if (controller.GetPressDown(applicationMenu))
         {
-            modeCounter = 0;
+            modeCounter = 0;          
         }
         if (controller.GetPressDown(triggerButton))
         {
             modeCounter++;
-        }
-        if (modeCounter == 1)
-        {
-            audioOutput = true;
-            hapticOutput = false;
-        }
-        if (modeCounter == 2)
-        {
-            audioOutput = false;
-            hapticOutput = true;
-        }
-        if (modeCounter >= 2)
-        {
-            modeCounter = 1;
+            if (modeCounter > 2)
+            {
+                modeCounter = 1;
+            }
         }
         if (modeCounter == 0)
         {
-            audioOutput = false;
+            Debug.Log("Dual Output Mode");
+            dualOutput = true;
             hapticOutput = false;
+            audioOutput = false;
+        }
+        if (modeCounter == 1)
+        {
+            Debug.Log("Haptic Output Mode");
+            dualOutput = false;
+            hapticOutput = true;
+            audioOutput = false;
+        }
+        if (modeCounter == 2)
+        {
+            Debug.Log("Audio Output Mode");
+            dualOutput = false;
+            hapticOutput = false;
+            audioOutput = true;
         }
         if (controller.GetPressDown(gripButton))
         {
             shortRangeMode = !shortRangeMode;
+            Debug.Log(shortRangeMode);
         }
         if (controller.GetPress(touchPad))
         {
@@ -97,16 +114,14 @@ public class SensorSweep : MonoBehaviour
             rig.position += (headset.transform.right * axis.x + headset.transform.forward * axis.y) * Time.deltaTime;
         }
     }
-
-    IEnumerator HapticRumble(float length, float strength)
+    IEnumerator HapticRumble(float length, ushort strength)
     {
         for (float i = 0; i < length; i += Time.deltaTime)
         {
-            controller.TriggerHapticPulse((ushort)Mathf.Lerp(0, 3999, strength));
+            controller.TriggerHapticPulse(strength);
             yield return null;
         }
     }
-
     IEnumerator RaySonar()
     {
         while (true)
@@ -114,131 +129,165 @@ public class SensorSweep : MonoBehaviour
             for (int i = -segments; i < segments; i++)
             {
                 RaycastHit hit;
-                Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0, 0.5f));
+                Ray uRay = upwardsCamera.ViewportPointToRay(new Vector3(0.5f, 0, 0.5f));
+                Ray dRay = downwardsCamera.ViewportPointToRay(new Vector3(0.5f, 0, 0.5f));
+                Ray cRay = crossingCamera.ViewportPointToRay(new Vector3(0.5f, 0, 0.5f));
+                Ray fRay = frontalCamera.ViewportPointToRay(new Vector3(0.5f, 0, 0.5f));
                 float segmentIndex = Mathf.Abs(i);
                 angle = Mathf.Lerp(-fov / 2, fov / 2, segmentIndex / segments);
                 yield return null;
                 targetPos = (Quaternion.Euler(0, angle, 0) * transform.forward).normalized * sonarRange;
-
-                float closestDistance = Mathf.Infinity; // Don't know if this works
-                foreach (GameObject obj in objects)
+                if (shortRangeMode)
                 {
-                    var distance = Vector3.Distance(obj.transform.position, transform.position);
-                    if (distance < closestDistance)
-                    {
-                        closest = obj;
-                        closestDistance = distance;
-                    }
-                } //Don't know if this area works.
-              //  distance = Vector3.Distance(targetPos.transform.position, closest.transform.position); // I doubt this will work
-
-                if (Physics.Raycast(ray.origin, targetPos, out hit))
+                    sonarRange = 3f;
+                }
+                if (!shortRangeMode)
                 {
-                    if (shortRangeMode)
+                    sonarRange = 15f;
+                }
+                if (Physics.Raycast(uRay.origin, targetPos, out hit))
+                {
+                    Debug.DrawRay(uRay.origin, targetPos, Color.yellow, 0.5f);
+                    if (hit.collider.tag != "Ground")
                     {
-                        sonarRange = 10f;
-                    }
-                    if (!shortRangeMode)
-                    {
-                        sonarRange = 20f;
-                    }
-                    if (cam.tag == "Frontal")
-                    {
-                        Debug.DrawRay(ray.origin, targetPos, Color.red, 0.5f);
-                        if (hit.collider.tag == "Frontal_Obstruction")
+                        audioPulse.clip = audioPulse1;
+                        hapticPulse.clip = hapticPulse1;
+                        Debug.Log("Kerb or Downward Stairs");
+                        if (audioOutput)
                         {
-                            Debug.Log("Frontal Obstruction");
+                            hapticPulse.Stop();
+                            audioPulse.Play();
+                        }
+                        if (hapticOutput)
+                        {
+                            hapticPulse.Play();
+                            audioPulse.Stop();
+                            StartCoroutine(HapticRumble(1, 500));
+                        }
+                        if (!audioOutput && !hapticOutput)
+                        {
+                            hapticPulse.Play();
+                            audioPulse.Play();
+                            StartCoroutine(HapticRumble(1, 500));
+                        }
+                    }
+                    else
+                    {
+                        audioPulse.Stop();
+                        hapticPulse.Stop();
+                        StopCoroutine(HapticRumble(1, 500));
+                    }
+                }
+                if (Physics.Raycast(fRay.origin, targetPos, out hit))
+                {
+                    rumbleforce = 30f;
+                    Debug.DrawRay(fRay.origin, targetPos, Color.red, 0.5f);
+                    if (hit.collider.tag == "Frontal_Obstruction")
+                    {
+                        audioPulse.clip = audioPulse2;
+                        hapticPulse.clip = hapticPulse2;
+                        Debug.Log("Frontal Obstruction");
+                        if (audioOutput)
+                        {
+                            hapticPulse.Stop();
+                            audioPulse.Play();
+                        }
+                        if (hapticOutput)
+                        {
+                            hapticPulse.Play();
+                            audioPulse.Stop();
+                            StartCoroutine(HapticRumble(1, 3999));
+                        }
+                        if (!audioOutput && !hapticOutput)
+                        {
+                            hapticPulse.Play();
+                            audioPulse.Play();
+                            StartCoroutine(HapticRumble(1, 3999));
+                        }
+                    }
+                    else
+                    {
+                        hapticPulse.Stop();
+                        audioPulse.Stop();
+                        StopCoroutine(HapticRumble(1, 3999));
+                    }
+                }
+                if (Physics.Raycast(cRay.origin, targetPos, out hit))
+                {
+                    Debug.DrawRay(cRay.origin, targetPos, Color.green, 0.5f);
+
+                    if (hit.collider.tag == "Pedestrian_Crossing")
+                    {
+                        audioPulse.clip = audioPulse3;
+                        hapticPulse.clip = hapticPulse3;
+                        Debug.Log("Pedestrian Crossing");
+                        if (hit.transform.gameObject.GetComponent<Material>().color == Color.red)
+                        {
+                            Debug.Log("Traffic light = Red. Do not Cross");
+                        }
+                        if (hit.transform.gameObject.GetComponent<Material>().color == Color.green)
+                        {
+                            Debug.Log("Traffic light = Green. Safe to Cross");
                             if (audioOutput)
                             {
-                                pitch = 1f;
+                                hapticPulse.Stop();
+                                audioPulse.Play();
                             }
                             if (hapticOutput)
                             {
-                                StartCoroutine(HapticRumble(1, 3000));
+                                hapticPulse.Play();
+                                audioPulse.Stop();
+                                StartCoroutine(HapticRumble(1, 1999));
                             }
                             if (!audioOutput && !hapticOutput)
                             {
-                                pitch = 1f;
-                                StartCoroutine(HapticRumble(1, 3000));
+                                hapticPulse.Play();
+                                audioPulse.Play();
+                                StartCoroutine(HapticRumble(1, 1999));
                             }
-                        }
-                        else
+                        }                     
+                    }
+                    if (hit.collider.tag == "Pelican_Crossing")
+                    {
+                        Debug.Log("Pelican Crossing");
+                    }
+                    else
+                    {
+                        audioPulse.Stop();
+                        hapticPulse.Stop();
+                    }
+                }
+                if (Physics.Raycast(dRay.origin, targetPos, out hit))
+                {
+                    Debug.DrawRay(dRay.origin, targetPos, Color.blue, 0.5f);
+                    if (hit.collider.tag == "Overhanging_Obstruction")
+                    {
+                        audioPulse.clip = audioPulse4;
+                        hapticPulse.clip = hapticPulse4;
+                        Debug.Log("Overhanging Obstruction");
+                        if (audioOutput)
                         {
-                            StopCoroutine(HapticRumble(1, 3000));
+                            audioPulse.Play();
+                            hapticPulse.Stop();
+                        }
+                        if (hapticOutput)
+                        {
+                            audioPulse.Stop();
+                            hapticPulse.Play();
+                            StartCoroutine(HapticRumble(1, 20));
+                        }
+                        if (!audioOutput && !hapticOutput)
+                        {
+                            hapticPulse.Play();
+                            audioPulse.Play();
+                            StartCoroutine(HapticRumble(1, 20));
                         }
                     }
-                    if (cam.tag == "Upward")
+                    else
                     {
-                        Debug.DrawRay(ray.origin, targetPos, Color.blue, 0.5f);
-                        if (hit.collider.tag == "Overhanging_Obstruction")
-                        {
-                            Debug.Log("Overhanging Obstruction");
-                            if (audioOutput)
-                            {
-                                pitch = 1.4f;
-                            }
-                            if (hapticOutput)
-                            {
-                                StartCoroutine(HapticRumble(1, 2000));
-                            }
-                            if (!audioOutput && !hapticOutput)
-                            {
-                                pitch = 1.4f;
-                                StartCoroutine(HapticRumble(1, 2000));
-                            }
-                        }
-                        else
-                        {
-                            StopCoroutine(HapticRumble(1, 2000));
-                        }
-                    }
-                    if (cam.tag == "Camera")
-                    {
-                        Debug.DrawRay(ray.origin, targetPos, Color.green, 0.5f);
-                        if (hit.collider.tag == "Pedestrian_Crossing")
-                        {
-                            Debug.Log("Pedestrian Crossing");
-                            if (hit.transform.gameObject.GetComponent<Renderer>().material.color == Color.red)
-                            {
-                                Debug.Log("Traffic light = Red. Do not Cross");
-                            }
-                            if (hit.transform.gameObject.GetComponent<Renderer>().material.color == Color.green)
-                            {
-                                Debug.Log("Traffic light = Green. Safe to Cross");
-                            }
-                        }
-                        if (hit.collider.tag == "Pelican_Crossing")
-                        {
-                            Debug.Log("Pelican Crossing");
-                        }
-                        else
-                        {
-                        }
-                    }
-                    if (cam.tag == "Downward")
-                    {
-                        Debug.DrawRay(ray.origin, targetPos, Color.yellow, 0.5f);
-                        if (hit.collider.tag != "Ground")
-                        {
-                            Debug.Log("Kerb or Downward Stairs");
-                            if (audioOutput)
-                            {
-                                pitch = 1.8f;
-                            }
-                            if (hapticOutput)
-                            {
-                                StartCoroutine(HapticRumble(1, 1000));
-                            }
-                            if (!audioOutput && !hapticOutput)
-                            {
-                                pitch = 1.8f;
-                                StartCoroutine(HapticRumble(1, 1000));
-                            }
-                        }
-                        else
-                        {
-                            StopCoroutine(HapticRumble(1, 1000));
-                        }
+                        hapticPulse.Stop();
+                        audioPulse.Stop();
+                        StopCoroutine(HapticRumble(1, 20));
                     }
                 }
             }
