@@ -5,24 +5,23 @@ using UnityEngine;
 public class SensorSweep : MonoBehaviour
 {
     private float sonarRange;
-    public GameObject greenLight;
-    public GameObject redLight;
     private float fov = 15;
     public Camera upwardsCamera;
     public Camera downwardsCamera;
     public Camera frontalCamera;
     public Camera crossingCamera;
     public float angle;
-    private float rumbleforce;
     //Changes the spread of raycasts
     private int segments = 30;
     //Segments equals number of lines however incorrect number of segments showing for lines
-    private Vector3 targetPos;
+    private Vector3 uTargetPos;
+    private Vector3 fTargetPos;
+    private Vector3 dTargetPos;
+    private Vector3 cTargetPos;
     private float pitch;
     private bool shortRangeMode;
     private bool audioOutput;
     private bool hapticOutput;
-    private bool dualOutput;
     private int modeCounter;
     public AudioClip hapticPulse1;
     public AudioClip hapticPulse2;
@@ -33,6 +32,7 @@ public class SensorSweep : MonoBehaviour
     public AudioClip audioPulse2;
     public AudioClip audioPulse3;
     public AudioClip audioPulse4;
+    private Renderer rend;
 
     public Transform rig;
     public Transform headset;
@@ -51,7 +51,10 @@ public class SensorSweep : MonoBehaviour
     {
         audioPulse = GameObject.FindGameObjectWithTag("Audio").GetComponent<AudioSource>();
         hapticPulse = GameObject.FindGameObjectWithTag("Haptic").GetComponent<AudioSource>();
-        targetPos = Vector3.zero;
+        uTargetPos = Vector3.zero;
+        fTargetPos = Vector3.zero;
+        dTargetPos = Vector3.zero;
+        cTargetPos = Vector3.zero;
         StartCoroutine("RaySonar");
         trackedObj = GetComponent<SteamVR_TrackedObject>();
 
@@ -80,21 +83,19 @@ public class SensorSweep : MonoBehaviour
         if (modeCounter == 0)
         {
             Debug.Log("Dual Output Mode");
-            dualOutput = true;
             hapticOutput = false;
             audioOutput = false;
         }
         if (modeCounter == 1)
         {
             Debug.Log("Haptic Output Mode");
-            dualOutput = false;
             hapticOutput = true;
             audioOutput = false;
         }
         if (modeCounter == 2)
         {
             Debug.Log("Audio Output Mode");
-            dualOutput = false;
+
             hapticOutput = false;
             audioOutput = true;
         }
@@ -136,7 +137,11 @@ public class SensorSweep : MonoBehaviour
                 float segmentIndex = Mathf.Abs(i);
                 angle = Mathf.Lerp(-fov / 2, fov / 2, segmentIndex / segments);
                 yield return null;
-                targetPos = (Quaternion.Euler(0, angle, 0) * transform.forward).normalized * sonarRange;
+                uTargetPos = (Quaternion.Euler(0, angle, 0) * transform.forward + transform.up).normalized * sonarRange;
+                fTargetPos = (Quaternion.Euler(0, angle, 0) * transform.forward).normalized * sonarRange;
+                dTargetPos = (Quaternion.Euler(0, angle, 0) * -transform.up).normalized * 2f;
+                cTargetPos = (Quaternion.Euler(0, angle, 0) * transform.forward + -transform.up + transform.forward + transform.forward).normalized * sonarRange;
+
                 if (shortRangeMode)
                 {
                     sonarRange = 3f;
@@ -145,9 +150,9 @@ public class SensorSweep : MonoBehaviour
                 {
                     sonarRange = 15f;
                 }
-                if (Physics.Raycast(uRay.origin, targetPos, out hit))
+                if (Physics.Raycast(dRay.origin, dTargetPos, out hit))
                 {
-                    Debug.DrawRay(uRay.origin, targetPos, Color.yellow, 0.5f);
+                    Debug.DrawRay(dRay.origin, dTargetPos, Color.yellow, 0.5f);
                     if (hit.collider.tag != "Ground")
                     {
                         audioPulse.clip = audioPulse1;
@@ -178,10 +183,9 @@ public class SensorSweep : MonoBehaviour
                         StopCoroutine(HapticRumble(1, 500));
                     }
                 }
-                if (Physics.Raycast(fRay.origin, targetPos, out hit))
+                if (Physics.Raycast(fRay.origin, fTargetPos, out hit))
                 {
-                    rumbleforce = 30f;
-                    Debug.DrawRay(fRay.origin, targetPos, Color.red, 0.5f);
+                    Debug.DrawRay(fRay.origin, fTargetPos, Color.red, 0.5f);
                     if (hit.collider.tag == "Frontal_Obstruction")
                     {
                         audioPulse.clip = audioPulse2;
@@ -212,20 +216,20 @@ public class SensorSweep : MonoBehaviour
                         StopCoroutine(HapticRumble(1, 3999));
                     }
                 }
-                if (Physics.Raycast(cRay.origin, targetPos, out hit))
+                if (Physics.Raycast(cRay.origin, cTargetPos, out hit))
                 {
-                    Debug.DrawRay(cRay.origin, targetPos, Color.green, 0.5f);
+                    Debug.DrawRay(cRay.origin, cTargetPos, Color.green, 0.5f);
 
                     if (hit.collider.tag == "Pedestrian_Crossing")
                     {
                         audioPulse.clip = audioPulse3;
                         hapticPulse.clip = hapticPulse3;
                         Debug.Log("Pedestrian Crossing");
-                        if (hit.transform.gameObject.GetComponent<Material>().color == Color.red)
+                        if (hit.collider.gameObject.GetComponent<Renderer>().material.color == Color.red)
                         {
                             Debug.Log("Traffic light = Red. Do not Cross");
                         }
-                        if (hit.transform.gameObject.GetComponent<Material>().color == Color.green)
+                        if (hit.collider.gameObject.GetComponent<Renderer>().material.color == Color.green)
                         {
                             Debug.Log("Traffic light = Green. Safe to Cross");
                             if (audioOutput)
@@ -250,6 +254,10 @@ public class SensorSweep : MonoBehaviour
                     if (hit.collider.tag == "Pelican_Crossing")
                     {
                         Debug.Log("Pelican Crossing");
+                        if (hit.collider.tag == "Pelican_Crossing" && hit.collider.tag == "Car")
+                        {
+                            Debug.Log("Not safe to cross. Car in way");
+                        }
                     }
                     else
                     {
@@ -257,9 +265,9 @@ public class SensorSweep : MonoBehaviour
                         hapticPulse.Stop();
                     }
                 }
-                if (Physics.Raycast(dRay.origin, targetPos, out hit))
+                if (Physics.Raycast(uRay.origin, uTargetPos, out hit))
                 {
-                    Debug.DrawRay(dRay.origin, targetPos, Color.blue, 0.5f);
+                    Debug.DrawRay(uRay.origin, uTargetPos, Color.blue, 0.5f);
                     if (hit.collider.tag == "Overhanging_Obstruction")
                     {
                         audioPulse.clip = audioPulse4;

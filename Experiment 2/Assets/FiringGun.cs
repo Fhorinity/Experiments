@@ -15,13 +15,15 @@ public class FiringGun : MonoBehaviour
     private Valve.VR.EVRButtonId triggerButton = Valve.VR.EVRButtonId.k_EButton_SteamVR_Trigger;
     private SteamVR_Controller.Device controller { get { return SteamVR_Controller.Input((int)trackedObj.index); } }
     private SteamVR_TrackedObject trackedObj;
-
+    public AudioClip hapticclip;
     private float nextTimeToFire = 0f;
+    public AudioSource audioPulse;
 
 	// Use this for initialization
 	void Start ()
     {
         trackedObj = GetComponent<SteamVR_TrackedObject>();
+        audioPulse = GameObject.FindGameObjectWithTag("Audio").GetComponent<AudioSource>();
 	}
     // Update is called once per frame
     void Update()
@@ -30,6 +32,8 @@ public class FiringGun : MonoBehaviour
         {
             //   nextTimeToFire = Time.time + 1f / fireRate;
             Shoot();
+            audioPulse.clip = hapticclip;
+            audioPulse.Play();
         }
     }
     void Shoot()
