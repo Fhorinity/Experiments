@@ -18,6 +18,7 @@ public class FiringGun : MonoBehaviour
     public AudioClip hapticclip;
     private float nextTimeToFire = 0f;
     public AudioSource audioPulse;
+    
 
 	// Use this for initialization
 	void Start ()
@@ -42,7 +43,7 @@ public class FiringGun : MonoBehaviour
         RaycastHit hit;
         if (!ve)
         {
-            if (Physics.Raycast(cam.transform.position, cam.transform.forward, out hit, range))
+            if (Physics.Raycast(transform.position, cam.transform.forward, out hit, range))
             {
                 Debug.Log(hit.transform.name);
 
